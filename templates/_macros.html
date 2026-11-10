@@ -1,0 +1,21 @@
+{% macro request_card(r, show_worker=True) %}
+<article class="request-card status-{{ r.status }}">
+  <div class="rc-head">
+    <span class="badge badge-{{ r.type }}">{{ r.type_label }}</span>
+    <span class="badge badge-status badge-{{ r.status }}">{{ r.status_label }}</span>
+    <span class="rc-id">№{{ r.id }}</span>
+  </div>
+  <div class="rc-body">
+    <p><strong>👤 Клиент:</strong> {{ r.client_name }}</p>
+    <p><strong>📞 Телефон:</strong> <a href="tel:{{ r.client_phone }}">{{ r.client_phone }}</a></p>
+    <p><strong>📍 Адрес:</strong> {{ r.address }}</p>
+    {% if r.door_count %}<p><strong>🚪 Количество:</strong> {{ r.door_count }}</p>{% endif %}
+    {% if r.date_preferred %}<p><strong>📅 Желаемая дата:</strong> {{ r.date_preferred }}</p>{% endif %}
+    {% if r.comment %}<p><strong>💬 Комментарий:</strong> {{ r.comment }}</p>{% endif %}
+  </div>
+  <div class="rc-foot">
+    <span class="muted">Продавец: {{ r.seller_name }} · создана {{ r.created_at[:10] }}</span>
+    {% if show_worker and r.worker_name %}<span class="muted">Мастер: {{ r.worker_name }}</span>{% endif %}
+  </div>
+</article>
+{% endmacro %}

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from "_macros.html" import request_card %}
+{% block title %}Лента заявок — DveriApp{% endblock %}
+{% block content %}
+<h2>Свободные заявки</h2>
+{% if new %}
+  <div class="cards">
+    {% for r in new %}
+      <div class="card-with-actions">
+        {{ request_card(r, show_worker=false) }}
+        <form method="post" action="{{ url_for('take_request', rid=r.id) }}">
+          <button class="btn btn-full" type="submit">Взять в работу</button>
+        </form>
+      </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <p class="muted">Свободных заявок нет — все разобраны 👍</p>
+{% endif %}
+
+{% if mine %}
+<h2>Мои работы</h2>
+  <div class="cards">
+    {% for r in mine %}
+      <div class="card-with-actions">
+        {{ request_card(r) }}
+        <div class="action-row">
+          <form method="post" action="{{ url_for('done_request', rid=r.id) }}">
+            <button class="btn" type="submit">Отметить выполненной ✅</button>
+          </form>
+          <form method="post" action="{{ url_for('release_request', rid=r.id) }}">
+            <button class="btn btn-outline" type="submit">Освободить</button>
+          </form>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+{% if done %}
+<h2>Выполненные</h2>
+  <div class="cards">
+    {% for r in done %}{{ request_card(r) }}{% endfor %}
+  </div>
+{% endif %}
+{% endblock %}

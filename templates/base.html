@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}DveriApp — заявки на установку и замер дверей{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header class="topbar">
+  <a href="/" class="logo">🚪 DveriApp</a>
+  <nav>
+    {% if user %}
+      {% if user.role == 'seller' %}
+        <a href="{{ url_for('new_request') }}">Новая заявка</a>
+        <a href="{{ url_for('my_requests') }}">Мои заявки</a>
+      {% else %}
+        <a href="{{ url_for('feed') }}">Лента заявок</a>
+      {% endif %}
+      <span class="whoami">{{ user.name }} ({{ 'продавец' if user.role == 'seller' else 'мастер' }})</span>
+      <a class="btn btn-small btn-outline" href="{{ url_for('logout') }}">Выйти</a>
+    {% else %}
+      <a href="{{ url_for('login') }}">Войти</a>
+      <a class="btn btn-small" href="{{ url_for('register') }}">Регистрация</a>
+    {% endif %}
+  </nav>
+</header>
+
+<main class="container">
+  {% block content %}{% endblock %}
+</main>
+
+<footer class="footer">
+  DveriApp — заявки продавцов → работа для установщиков и замерщиков
+</footer>
+</body>
+</html>
