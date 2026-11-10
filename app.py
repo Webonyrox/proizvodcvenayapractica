@@ -9,15 +9,35 @@ DveriApp — сервис заявок на установку и замер д�
 Сайт: http://localhost:5000
 """
 
+import json
+import secrets
 from datetime import datetime
+from pathlib import Path
 
-from flask import Flask, jsonify, redirect, render_template, request, url_for
+from flask import (Flask, Response, jsonify, redirect, render_template,
+                   request, send_file, session, url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import db
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "dveri-app-secret-change-me"
+
+# ---------- настройки админ-панели (доступ к базе данных) ----------
+CONFIG_FILE = Path(__file__).resolve().parent / "config.json"
+
+
+def admin_credentials():
+    """Читает логин/пароль админа из config.json (создаёт файл при необходимости)."""
+    cfg = {"admin_login": "admin", "admin_password": "admin123", "ngrok_authtoken": ""}
+    if CONFIG_FILE.exists():
+        try:
+            cfg.update(json.loads(CONFIG_FILE.read_text(encoding="utf-8")))
+        except Exception:
+            pass
+    else:
+        CONFIG_FILE.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+    return cfg["admin_login"], cfg["admin_password"]
 
 
 # ---------------------------------------------------------------- helpers ---
@@ -212,6 +232,129 @@ def api_create_request():
         door_count=str(data.get("door_count", "1")).strip() or "1",
     )
     return jsonify({"ok": True, "id": rid}), 201
+
+
+# ---------------------------------------------------------------- admin ----
+# Админ-панель: полный доступ владельца к базе данных.
+
+ADMIN_TABLES = ("users", "requests")
+
+
+@app.route("/admin", methods=["GET", "POST"])
+def admin_login():
+    login_ok, pass_ok = admin_credentials()
+    error = None
+    if request.method == "POST":
+        if request.form.get("login") == login_ok and request.form.get("password") == pass_ok:
+            session["is_admin"] = secrets.token_hex(8)
+            return redirect(url_for("admin_db"))
+        error = "Неверный логин или пароль администратора."
+    if session.get("is_admin"):
+        return redirect(url_for("admin_db"))
+    return render_template("admin_login.html", error=error)
+
+
+@app.route("/admin/logout")
+def admin_logout():
+    session.pop("is_admin", None)
+    return redirect(url_for("admin_login"))
+
+
+def _table_data(table):
+    """Безопасно читает таблицу: имена колонок — только из схемы БД, не из URL."""
+    conn = db.get_conn()
+    cols = [r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+    rows = [dict(r) for r in conn.execute(f"SELECT * FROM {table} ORDER BY id DESC LIMIT 500").fetchall()]
+    conn.close()
+    # поле для отображения/редактирования пароля (в БД хранится хеш — показываем прочерк)
+    if table == "users":
+        for u in rows:
+            u.pop("password_hash", None)
+    return cols, rows
+
+
+@app.route("/admin/db")
+def admin_db():
+    if not session.get("is_admin"):
+        return redirect(url_for("admin_login"))
+    tables = {t: _table_data(t) for t in ADMIN_TABLES}
+    _, users_rows = tables["users"]
+    _, req_rows = tables["requests"]
+    stats = {
+        "sellers": sum(1 for u in users_rows if u["role"] == "seller"),
+        "workers": sum(1 for u in users_rows if u["role"] == "worker"),
+        "new": sum(1 for r in req_rows if r["status"] == "new"),
+        "taken": sum(1 for r in req_rows if r["status"] == "taken"),
+        "done": sum(1 for r in req_rows if r["status"] == "done"),
+    }
+    return render_template("admin_db.html", tables=tables, stats=stats)
+
+
+@app.route("/admin/edit/<table>/<int:row_id>", methods=["POST"])
+def admin_edit(table, row_id):
+    if not session.get("is_admin") or table not in ADMIN_TABLES:
+        return abort_403_or_login()
+    conn = db.get_conn()
+    cols = [r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+    conn.close()
+    updates, params = [], []
+    for col in cols:
+        if col in ("id", "created_at", "updated_at", "password_hash"):
+            continue
+        if col in request.form:
+            val = request.form[col].strip()
+            if table == "users" and col == "password":
+                continue  # пароль меняется отдельно ниже
+            updates.append(f"{col} = ?")
+            params.append(val if val != "" else None)
+    # отдельная смена пароля пользователя
+    if table == "users" and request.form.get("password_new", "").strip():
+        updates.append("password_hash = ?")
+        params.append(generate_password_hash(request.form["password_new"].strip()))
+    if updates:
+        now = datetime.now().isoformat(timespec="seconds")
+        if table == "requests":
+            updates.append("updated_at = ?")
+            params.append(now)
+        params.append(row_id)
+        conn = db.get_conn()
+        conn.execute(f"UPDATE {table} SET {', '.join(updates)} WHERE id = ?", params)
+        conn.commit()
+        conn.close()
+    return redirect(url_for("admin_db"))
+
+
+def abort_403_or_login():
+    if not session.get("is_admin"):
+        return redirect(url_for("admin_login"))
+    return "Запрещено", 403
+
+
+@app.route("/admin/delete/<table>/<int:row_id>", methods=["POST"])
+def admin_delete(table, row_id):
+    if not session.get("is_admin"):
+        return redirect(url_for("admin_login"))
+    if table not in ADMIN_TABLES:
+        return "Неизвестная таблица", 400
+    conn = db.get_conn()
+    if table == "users":
+        # сначала отвязываем заявки этого пользователя, потом удаляем
+        conn.execute("UPDATE requests SET worker_id = NULL, status='new' WHERE worker_id = ?", (row_id,))
+        conn.execute("DELETE FROM requests WHERE seller_id = ?", (row_id,))
+        conn.execute("DELETE FROM users WHERE id = ?", (row_id,))
+    else:
+        conn.execute("DELETE FROM requests WHERE id = ?", (row_id,))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("admin_db"))
+
+
+@app.route("/admin/export")
+def admin_export():
+    if not session.get("is_admin"):
+        return redirect(url_for("admin_login"))
+    return send_file(db.DB_PATH, as_attachment=True, download_name="dveri.db",
+                     mimetype="application/x-sqlite3")
 
 
 # ------------------------------------------------------------------- run ----

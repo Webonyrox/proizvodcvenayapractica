@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Админ — вход</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .admin-box { max-width: 380px; margin: 60px auto; padding: 28px; background: #fff;
+                 border-radius: 14px; box-shadow: 0 8px 30px rgba(0,0,0,.08); }
+    .admin-box h1 { font-size: 22px; margin-bottom: 6px; }
+    .admin-box p.hint { color: #777; font-size: 13px; margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <div class="admin-box">
+    <h1>🔐 База данных</h1>
+    <p class="hint">Вход только для владельца сайта.</p>
+    {% if error %}<div class="flash">{{ error }}</div>{% endif %}
+    <form method="post">
+      <label>Логин администратора
+        <input type="text" name="login" required autofocus>
+      </label>
+      <label>Пароль
+        <input type="password" name="password" required>
+      </label>
+      <button class="btn" type="submit">Войти</button>
+    </form>
+    <p class="hint" style="margin-top:14px">Логин и пароль — в файле <b>config.json</b> в папке проекта.</p>
+  </div>
+</body>
+</html>

@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Админ — база данных</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .adm-head { display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between;
+                padding:14px 18px; background:#1f2937; color:#fff; }
+    .adm-head a { color:#fff; text-decoration:none; margin-left:14px; font-size:14px; }
+    .cards { display:flex; flex-wrap:wrap; gap:12px; padding:16px 18px; }
+    .card { background:#fff; border-radius:12px; padding:14px 20px; box-shadow:0 4px 14px rgba(0,0,0,.06); min-width:120px; }
+    .card b { font-size:24px; display:block; }
+    .tbl-wrap { overflow-x:auto; padding:0 18px 24px; }
+    table.data { border-collapse:collapse; width:100%; background:#fff; font-size:13px; }
+    table.data th, table.data td { border:1px solid #e5e7eb; padding:6px 8px; text-align:left; vertical-align:top; }
+    table.data th { background:#f3f4f6; }
+    td input[type=text] { width:110px; }
+    .del-btn { background:#dc2626; color:#fff; border:none; border-radius:6px; padding:4px 8px; cursor:pointer; }
+    h2.sec { padding:18px 18px 6px; }
+  </style>
+</head>
+<body>
+  <div class="adm-head">
+    <b>⚙️ База данных DveriApp</b>
+    <span>
+      <a href="/admin/export">⬇ Скачать dveri.db</a>
+      <a href="/">На сайт</a>
+      <a href="/admin/logout">Выйти</a>
+    </span>
+  </div>
+
+  <div class="cards">
+    <div class="card"><b>{{ stats.sellers }}</b> продавцов</div>
+    <div class="card"><b>{{ stats.workers }}</b> мастеров</div>
+    <div class="card"><b>{{ stats.new }}</b> новых заявок</div>
+    <div class="card"><b>{{ stats.taken }}</b> в работе</div>
+    <div class="card"><b>{{ stats.done }}</b> выполнено</div>
+  </div>
+
+  <!-- ================= ПОЛЬЗОВАТЕЛИ ================= -->
+  <h2 class="sec">Пользователи (users)</h2>
+  <div class="tbl-wrap">
+    <table class="data">
+      <tr><th>ID</th><th>Имя</th><th>Логин</th><th>Роль</th><th>Новый пароль</th><th></th></tr>
+      {% for u in tables.users[1] %}
+      <tr>
+        <form method="post" action="/admin/edit/users/{{ u.id }}">
+          <td>{{ u.id }}</td>
+          <td><input type="text" name="name" value="{{ u.name }}"></td>
+          <td><input type="text" name="login" value="{{ u.login }}"></td>
+          <td>
+            <select name="role">
+              <option value="seller" {% if u.role=='seller' %}selected{% endif %}>Продавец</option>
+              <option value="worker" {% if u.role=='worker' %}selected{% endif %}>Мастер</option>
+            </select>
+          </td>
+          <td><input type="text" name="password_new" placeholder="не менять"></td>
+          <td>
+            <button class="btn btn-sm" type="submit">Сохранить</button>
+        </form>
+            <form method="post" action="/admin/delete/users/{{ u.id }}" style="display:inline"
+                  onsubmit="return confirm('Удалить пользователя {{ u.login }} и все его заявки?');">
+              <button class="del-btn" type="submit">Удалить</button>
+            </form>
+          </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+
+  <!-- ================= ЗАЯВКИ ================= -->
+  <h2 class="sec">Заявки (requests)</h2>
+  <div class="tbl-wrap">
+    <table class="data">
+      <tr>
+        <th>ID</th><th>Клиент</th><th>Телефон</th><th>Адрес</th><th>Тип</th><th>Статус</th>
+        <th>Дверей</th><th>Дата</th><th>Комментарий</th><th></th>
+      </tr>
+      {% for r in tables.requests[1] %}
+      <tr>
+        <form method="post" action="/admin/edit/requests/{{ r.id }}">
+          <td>{{ r.id }}</td>
+          <td><input type="text" name="client_name" value="{{ r.client_name }}"></td>
+          <td><input type="text" name="client_phone" value="{{ r.client_phone }}"></td>
+          <td><input type="text" name="address" value="{{ r.address }}" style="width:160px"></td>
+          <td>
+            <select name="type">
+              <option value="install" {% if r.type=='install' %}selected{% endif %}>Установка</option>
+              <option value="measure" {% if r.type=='measure' %}selected{% endif %}>Замер</option>
+            </select>
+          </td>
+          <td>
+            <select name="status">
+              <option value="new" {% if r.status=='new' %}selected{% endif %}>Новая</option>
+              <option value="taken" {% if r.status=='taken' %}selected{% endif %}>В работе</option>
+              <option value="done" {% if r.status=='done' %}selected{% endif %}>Выполнена</option>
+              <option value="cancelled" {% if r.status=='cancelled' %}selected{% endif %}>Отменена</option>
+            </select>
+          </td>
+          <td><input type="text" name="door_count" value="{{ r.door_count or '' }}" style="width:50px"></td>
+          <td><input type="text" name="date_preferred" value="{{ r.date_preferred or '' }}"></td>
+          <td><input type="text" name="comment" value="{{ r.comment or '' }}"></td>
+          <td>
+            <button class="btn btn-sm" type="submit">Сохранить</button>
+        </form>
+            <form method="post" action="/admin/delete/requests/{{ r.id }}" style="display:inline"
+                  onsubmit="return confirm('Удалить заявку №{{ r.id }}?');">
+              <button class="del-btn" type="submit">Удалить</button>
+            </form>
+          </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+</body>
+</html>
