@@ -198,8 +198,11 @@ def api_create_request():
     if missing:
         return jsonify({"ok": False, "error": f"Не заполнено: {', '.join(missing)}"}), 400
     seller = db.get_default_seller()
+    if not seller:
+        return jsonify({"ok": False,
+                        "error": "Нет ни одного продавца — сначала зарегистрируйте продавца на сайте"}), 400
     rid = db.create_request(
-        seller_id=seller["id"] if seller else 0,
+        seller_id=seller["id"],
         rtype=data["type"],
         client_name=data["client_name"].strip(),
         client_phone=data["client_phone"].strip(),
