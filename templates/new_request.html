@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Новая заявка — DveriApp{% endblock %}
+{% block content %}
+<div class="auth-card wide">
+  <h2>Новая заявка</h2>
+  {% if error %}<div class="alert">{{ error }}</div>{% endif %}
+  <form method="post">
+    <label>Тип заявки
+      <select name="type" required>
+        <option value="install">Установка двери</option>
+        <option value="measure">Замер проёма</option>
+      </select>
+    </label>
+    <label>Имя клиента
+      <input name="client_name" required placeholder="Как зовут покупателя">
+    </label>
+    <label>Телефон клиента
+      <input name="client_phone" required placeholder="+7 (___) ___-__-__">
+    </label>
+    <label>Адрес
+      <input name="address" required placeholder="Город, улица, дом, квартира">
+    </label>
+    <div class="row2">
+      <label>Количество дверей / проёмов
+        <input name="door_count" type="number" min="1" value="1">
+      </label>
+      <label>Желаемая дата
+        <input name="date_preferred" type="date">
+      </label>
+    </div>
+    <label>Комментарий
+      <textarea name="comment" rows="3" placeholder="Например: дверь с зеркалом, лифт грузовой, подъезд со стороны двора"></textarea>
+    </label>
+    <button class="btn btn-full" type="submit">Отправить заявку</button>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% from "_macros.html" import request_card %}
+{% block title %}Мои заявки — DveriApp{% endblock %}
+{% block content %}
+<h2>Мои заявки</h2>
+{% if requests %}
+  <div class="cards">
+    {% for r in requests %}{{ request_card(r) }}{% endfor %}
+  </div>
+{% else %}
+  <p class="muted">Заявок пока нет. <a href="{{ url_for('new_request') }}">Создать первую заявку</a>.</p>
+{% endif %}
+{% endblock %}

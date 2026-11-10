@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Регистрация — DveriApp{% endblock %}
+{% block content %}
+<div class="auth-card">
+  <h2>Регистрация</h2>
+  {% if error %}<div class="alert">{{ error }}</div>{% endif %}
+  <form method="post">
+    <label>Ваше имя
+      <input name="name" required placeholder="Иван Петров">
+    </label>
+    <label>Логин
+      <input name="login" required placeholder="ivan">
+    </label>
+    <label>Пароль
+      <input type="password" name="password" required minlength="4" placeholder="Минимум 4 символа">
+    </label>
+    <label>Кто вы?
+      <select name="role">
+        <option value="seller">Продавец дверей (подаёт заявки)</option>
+        <option value="worker">Установщик / замерщик (выполняет заявки)</option>
+      </select>
+    </label>
+    <button class="btn btn-full" type="submit">Зарегистрироваться</button>
+  </form>
+  <p class="muted">Уже есть аккаунт? <a href="{{ url_for('login') }}">Войти</a></p>
+</div>
+{% endblock %}
