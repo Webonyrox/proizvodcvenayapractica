@@ -8,7 +8,7 @@
   3. Открывает админ-панель с базой данных:
        http://localhost:5000/admin        — вход (логин admin / пароль из config.json)
        http://localhost:5000/admin/db     — просмотр таблиц, изменение и удаление строк
-       http://localhost:5000/admin/export — скачивание файла базы dveri.db
+       http://localhost:5000/admin/export — скачивание дампа базы данных (SQLite-файл или SQL для PostgreSQL)
 
 Запуск вручную:  python run.py
 Или двойным кликом: start.bat (Windows) / ./start.sh (Mac, Linux)
