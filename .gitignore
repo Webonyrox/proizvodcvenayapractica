@@ -1,4 +1,1 @@
 *.log
-.venv/
-__pycache__/
-config.json

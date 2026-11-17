@@ -36,3 +36,4 @@ Press CTRL+C to quit
  * Restarting with stat
  * Debugger is active!
  * Debugger PIN: 159-376-788
+127.0.0.1 - - [17/Nov/2026 18:03:19] "GET / HTTP/1.1" 200 -
