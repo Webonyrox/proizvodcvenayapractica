@@ -1,0 +1,6 @@
+{
+  "admin_login": "admin",
+  "admin_password": "admin123",
+  "ngrok_authtoken": "",
+  "postgres_url": "postgresql://dveri:dveri123@127.0.0.1:5432/dveriapp"
+}

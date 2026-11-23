@@ -9,15 +9,57 @@ DveriApp — сервис заявок на установку и замер д�
 Сайт: http://localhost:5000
 """
 
+import io
+import json
+import os
+import secrets
 from datetime import datetime
+from pathlib import Path
 
-from flask import Flask, jsonify, redirect, render_template, request, url_for
+from flask import (Flask, Response, jsonify, redirect, render_template,
+                   request, send_file, session, url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
 
-import db
+
+def _load_db_layer():
+    """Выбор слоя БД: PostgreSQL (если задан DATABASE_URL или postgres_url в
+    config.json), иначе локальный SQLite."""
+    url = os.environ.get("DATABASE_URL", "").strip()
+    if not url:
+        cfg_file = Path(__file__).resolve().parent / "config.json"
+        if cfg_file.exists():
+            try:
+                url = str(json.loads(cfg_file.read_text(encoding="utf-8"))
+                          .get("postgres_url", "")).strip()
+            except Exception:
+                url = ""
+    if url:
+        import db_pg
+        return db_pg
+    import db
+    return db
+
+
+db = _load_db_layer()
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "dveri-app-secret-change-me"
+
+# ---------- настройки админ-панели (доступ к базе данных) ----------
+CONFIG_FILE = Path(__file__).resolve().parent / "config.json"
+
+
+def admin_credentials():
+    """Читает логин/пароль админа из config.json (создаёт файл при необходимости)."""
+    cfg = {"admin_login": "admin", "admin_password": "admin123", "ngrok_authtoken": ""}
+    if CONFIG_FILE.exists():
+        try:
+            cfg.update(json.loads(CONFIG_FILE.read_text(encoding="utf-8")))
+        except Exception:
+            pass
+    else:
+        CONFIG_FILE.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+    return cfg["admin_login"], cfg["admin_password"]
 
 
 # ---------------------------------------------------------------- helpers ---
@@ -214,6 +256,154 @@ def api_create_request():
     return jsonify({"ok": True, "id": rid}), 201
 
 
+# ---------------------------------------------------------------- admin ----
+# Админ-панель: полный доступ владельца к базе данных.
+
+ADMIN_TABLES = ("users", "requests")
+
+
+@app.route("/admin", methods=["GET", "POST"])
+def admin_login():
+    login_ok, pass_ok = admin_credentials()
+    error = None
+    if request.method == "POST":
+        if request.form.get("login") == login_ok and request.form.get("password") == pass_ok:
+            session["is_admin"] = secrets.token_hex(8)
+            return redirect(url_for("admin_db"))
+        error = "Неверный логин или пароль администратора."
+    if session.get("is_admin"):
+        return redirect(url_for("admin_db"))
+    return render_template("admin_login.html", error=error)
+
+
+@app.route("/admin/logout")
+def admin_logout():
+    session.pop("is_admin", None)
+    return redirect(url_for("admin_login"))
+
+
+def _table_data(table):
+    """Безопасно читает таблицу: имена колонок — только из схемы БД, не из URL.
+    Работает как с SQLite, так и с PostgreSQL."""
+    if hasattr(db, "table_columns"):          # PostgreSQL
+        cols = db.table_columns(table)
+        rows = db.table_rows(table)[1]
+    else:                                     # SQLite
+        conn = db.get_conn()
+        cols = [r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+        rows = [dict(r) for r in conn.execute(
+            f"SELECT * FROM {table} ORDER BY id DESC LIMIT 500").fetchall()]
+        conn.close()
+    # поле для отображения/редактирования пароля (в БД хранится хеш — показываем прочерк)
+    if table == "users":
+        for u in rows:
+            u.pop("password_hash", None)
+    return cols, rows
+
+
+@app.route("/admin/db")
+def admin_db():
+    if not session.get("is_admin"):
+        return redirect(url_for("admin_login"))
+    tables = {t: _table_data(t) for t in ADMIN_TABLES}
+    _, users_rows = tables["users"]
+    _, req_rows = tables["requests"]
+    stats = {
+        "sellers": sum(1 for u in users_rows if u["role"] == "seller"),
+        "workers": sum(1 for u in users_rows if u["role"] == "worker"),
+        "new": sum(1 for r in req_rows if r["status"] == "new"),
+        "taken": sum(1 for r in req_rows if r["status"] == "taken"),
+        "done": sum(1 for r in req_rows if r["status"] == "done"),
+    }
+    return render_template("admin_db.html", tables=tables, stats=stats)
+
+
+@app.route("/admin/edit/<table>/<int:row_id>", methods=["POST"])
+def admin_edit(table, row_id):
+    if not session.get("is_admin") or table not in ADMIN_TABLES:
+        return abort_403_or_login()
+    cols = _column_names(table)
+    updates, params = {}, []
+    for col in cols:
+        if col in ("id", "created_at", "updated_at", "password_hash"):
+            continue
+        if col in request.form:
+            val = request.form[col].strip()
+            if table == "users" and col == "password":
+                continue  # пароль меняется отдельно ниже
+            updates[col] = val if val != "" else None
+    # отдельная смена пароля пользователя
+    if table == "users" and request.form.get("password_new", "").strip():
+        updates["password_hash"] = generate_password_hash(request.form["password_new"].strip())
+    if table == "requests":
+        updates["updated_at"] = datetime.now().isoformat(timespec="seconds")
+    if updates:
+        if hasattr(db, "update_row"):  # PostgreSQL
+            db.update_row(table, row_id, updates)
+        else:                          # SQLite
+            set_clause = ", ".join(f"{c} = ?" for c in updates)
+            conn = db.get_conn()
+            conn.execute(f"UPDATE {table} SET {set_clause} WHERE id = ?",
+                         list(updates.values()) + [row_id])
+            conn.commit()
+            conn.close()
+    return redirect(url_for("admin_db"))
+
+
+def _column_names(table):
+    """Имена колонок таблицы для обоих слоёв БД."""
+    if hasattr(db, "table_columns"):
+        return db.table_columns(table)
+    conn = db.get_conn()
+    cols = [r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+    conn.close()
+    return cols
+
+
+def abort_403_or_login():
+    if not session.get("is_admin"):
+        return redirect(url_for("admin_login"))
+    return "Запрещено", 403
+
+
+@app.route("/admin/delete/<table>/<int:row_id>", methods=["POST"])
+def admin_delete(table, row_id):
+    if not session.get("is_admin"):
+        return redirect(url_for("admin_login"))
+    if table not in ADMIN_TABLES:
+        return "Неизвестная таблица", 400
+    if hasattr(db, "delete_user"):  # PostgreSQL
+        if table == "users":
+            db.delete_user(row_id)
+        else:
+            db.delete_request(row_id)
+    else:                           # SQLite
+        conn = db.get_conn()
+        if table == "users":
+            # сначала отвязываем заявки этого пользователя, потом удаляем
+            conn.execute("UPDATE requests SET worker_id = NULL, status='new' WHERE worker_id = ?", (row_id,))
+            conn.execute("DELETE FROM requests WHERE seller_id = ?", (row_id,))
+            conn.execute("DELETE FROM users WHERE id = ?", (row_id,))
+        else:
+            conn.execute("DELETE FROM requests WHERE id = ?", (row_id,))
+        conn.commit()
+        conn.close()
+    return redirect(url_for("admin_db"))
+
+
+@app.route("/admin/export")
+def admin_export():
+    if not session.get("is_admin"):
+        return redirect(url_for("admin_login"))
+    if hasattr(db, "export_sql_dump"):  # PostgreSQL — отдаём SQL-дамп
+        dump = db.export_sql_dump()
+        return Response(dump, mimetype="text/plain",
+                        headers={"Content-Disposition":
+                                 "attachment; filename=dveri_postgres.sql"})
+    return send_file(db.DB_PATH, as_attachment=True, download_name="dveri.db",
+                     mimetype="application/x-sqlite3")
+
+
 # ------------------------------------------------------------------- run ----
 
 def _ensure_db():
@@ -229,7 +419,18 @@ _ensure_db()
 def _before():
     # Гарантируем наличие таблиц перед каждым запросом — даже если
     # файл dveri.db был удалён вручную во время работы сервера.
-    db.init_db()
+    # Для PostgreSQL это делаем только при старте (дорогие соединения).
+    if not hasattr(db, "table_columns"):
+        db.init_db()
+
+
+# PostgreSQL: проверяем соединение и создаём таблицы один раз при старте.
+if hasattr(db, "table_columns"):
+    try:
+        db.init_db()
+    except Exception as e:  # показываем понятную подсказку прямо в консоли
+        print("!! Ошибка подключения к PostgreSQL:", e)
+        print('   Проверьте "postgres_url" в config.json или переменную DATABASE_URL.')
 
 
 if __name__ == "__main__":
